@@ -10,413 +10,25 @@ File: run.py
 #IMPORTS
 #built-in
 import argparse
-import json
 import os
 import pickle
 
 #third-party
 import numpy as np
 import torch
-import torchvision
-from tqdm import tqdm
 import pandas as pd
 import pyarrow
 
-from google.cloud import storage, bigquery
-from sklearn.metrics import roc_auc_score, roc_curve
+from google.cloud import storage
 from torch.utils.data import  DataLoader
 
 #local
+from dataloader import ECAPA_TDNNDataset
 from utilities import *
 from models import *
+from loops import *
 
-#GCS helper functions
-def download_model(gcs_path,outpath, bucket):
-    '''
-    Download a model from google cloud storage and the args.pkl file located in the same folder(if it exists)
-
-    Inputs:
-    :param gcs_path: full file path in the bucket to a pytorch model(no gs://project-name in the path)
-    :param outpath: string path to directory where you want the model to be stored
-    :param bucket: initialized GCS bucket object
-    Outputs:
-    :return mdl_path: a string path to the local version of the finetuned model (args.pkl will be in the same folder as this model)
-    '''
-    if not os.path.exists(outpath):
-        os.makedirs(outpath)
-
-    dir_path = os.path.dirname(gcs_path)
-    bn = os.path.basename(gcs_path)
-    blobs = bucket.list_blobs(prefix=dir_path)
-    mdl_path = ''
-    for blob in blobs:
-        blob_bn = os.path.basename(blob.name)
-        if blob_bn == bn:
-            destination_uri = '{}/{}'.format(outpath, blob_bn) #download model 
-            mdl_path = destination_uri
-        elif blob_bn == 'args.pkl':
-            destination_uri = '{}/model_args.pkl'.format(outpath) #download args.pkl as model_args.pkl
-        else:
-            continue #skip any other files
-        if not os.path.exists(destination_uri):
-            blob.download_to_filename(destination_uri)
-   
-    return mdl_path
-
-def upload(gcs_prefix, path, bucket):
-    '''
-    Upload a file to a google cloud storage bucket
-    Inputs:
-    :param gcs_dir: directory path in the bucket to save file to (no gs://project-name in the path)
-    :param path: local string path of the file to upload
-    :param bucket: initialized GCS bucket object
-    '''
-    assert bucket is not None, 'no bucket given for uploading'
-    if gcs_prefix is None:
-        gcs_prefix = os.path.dirname(path)
-    blob = bucket.blob(os.path.join(gcs_prefix, os.path.basename(path)))
-    blob.upload_from_filename(path)
-
-#Load functions
-def load_args(args):
-    '''
-    Load in an .pkl file of args
-    :param args: dict with all the argument values
-    :return model_args: dict with all the argument values from the finetuned model
-    '''
-    # assumes that the model is saved in the same folder as an args.pkl file 
-    folder = os.path.dirname(args.finetuned_mdl_path)
-
-    if os.path.exists(os.path.join(folder, 'model_args.pkl')): #if downloaded from gcs into the exp dir, it should be saved under mdl_args.pkl to make sure it doesn't overwrite the args.pkl
-        with open(os.path.join(folder, 'model_args.pkl'), 'rb') as f:
-            model_args = pickle.load(f)
-    elif os.path.exists(os.path.join(folder, 'args.pkl')): #if not downloaded and instead stored in a local place, it will be saved as args.pkl
-        with open(os.path.join(folder, 'args.pkl'), 'rb') as f:
-            model_args = pickle.load(f)
-    else: #if there are no saved args
-        print('No args.pkl or model_args.pkl stored with the finetuned model. Using the current args for initializing the finetuned model instead.')
-        model_args = args
-    
-    return model_args
-
-def setup_mdl_args(args):
-    '''
-    Get model args used during finetuning of the specified model
-    :param args: dict with all the argument values
-    :return model_args: dict with all the argument values from the finetuned model
-    :return finetuned_mdl_path: updated finetuned_mdl_path (in case it needed to be downloaded from gcs)
-    '''
-    #if running a pretrained model only, use the args from this run
-    if args.finetuned_mdl_path is None:
-        model_args = args
-    else:
-    #if running a finetuned model
-        #(1): check if saved on cloud and load the model and args.pkl
-        if args.finetuned_mdl_path[:5] =='gs://':
-                mdl_path = args.finetuned_mdl_path[5:].replace(args.bucket_name,'')[1:]
-                args.finetuned_mdl_path = download_model(mdl_path, args.exp_dir, args.bucket)
-        
-        #(2): load the args used for finetuning
-        model_args = load_args(args)
-
-        #(3): check if the checkpoint for the finetuned model is downloaded
-        if model_args.pretrained_mdl_path[:5] =='gs://': #if checkpoint on cloud
-            checkpoint = model_args.pretrained_mdl_path[5:].replace(model_args.bucket_name,'')[1:]
-            if model_args.bucket_name != args.bucket_name: #if the bucket is not the same as the current bucket, initialize the bucket for downloading
-                if args.bucket_name is not None:
-                    storage_client = storage.Client(project=model_args.project_name)
-                    model_args.bucket = storage_client.bucket(model_args.bucket_name)
-                else:
-                    model_args.bucket = None
-
-                checkpoint = download_model(checkpoint, model_args.bucket) #download with the new bucket
-            else:
-                checkpoint = download_model(checkpoint, args.bucket) #download with the current bucket
-            model_args.pretrained_mdl_path = checkpoint #reset the checkpoint path
-        else: #load in from local machine, just need to check that the path exists
-            assert os.path.exists(model_args.pretrained_mdl_path), f'Current pretrain checkpoint does not exist on local machine: {model_args.pretrained_mdl_path}'
-
-    return model_args, args.finetuned_mdl_path
-
-def load_data(data_split_root, exp_dir, cloud, cloud_dir, bucket):
-    """
-    Load the train and test data from a directory. Assumes the train and test data will exist in this directory under train.csv and test.csv
-    :param data_split_root: specify str path where datasplit csvs are located
-    :param exp_dir: specify LOCAL output directory as str
-    :param cloud: boolean to specify whether to save everything to google cloud storage
-    :param cloud_dir: if saving to the cloud, you can specify a specific place to save to in the CLOUD bucket
-    :param bucket: google cloud storage bucket object
-    :return train_df, val_df, test_df: loaded dataframes with annotations
-    """
-    train_path = f'{data_split_root}/train.csv'
-    test_path = f'{data_split_root}/test.csv'
-    #get data
-    train_df = pd.read_csv(train_path, index_col = 'uid')
-    test_df = pd.read_csv(test_path, index_col = 'uid')
-
-    #randomly sample to get validation set 
-    val_df = train_df.sample(50)
-    train_df = train_df.drop(val_df.index)
-
-    #save validation set
-    val_path = os.path.join(exp_dir, 'validation.csv')
-    val_df.to_csv(val_path, index=True)
-
-    if cloud:
-        upload(cloud_dir, val_path, bucket)
-
-    #alter data columns
-    train_df["distortions"]=((train_df["distorted Cs"]+train_df["distorted V"])>0).astype(int)
-    val_df["distortions"]=((val_df["distorted Cs"]+val_df["distorted V"])>0).astype(int)
-    test_df["distortions"]=((test_df["distorted Cs"]+test_df["distorted V"])>0).astype(int)
-
-    return train_df, val_df, test_df
-
-#data transformations
-def get_transform(args):
-    """
-    Set up pre-processing transform for raw samples 
-    Loads data, reduces to 1 channel, downsamples, trims silence, truncate(?) and run feature extraction
-    :param args: dict with all the argument values
-    return transform: transforms object 
-    """
-    waveform_loader = UidToWaveform(prefix = args.prefix, bucket=args.bucket, lib=args.lib)
-    transform_list = [waveform_loader]
-    if args.reduce:
-        channel_sum = lambda w: torch.sum(w, axis = 0).unsqueeze(0)
-        mono_tfm = ToMonophonic(reduce_fn = channel_sum)
-        transform_list.append(mono_tfm)
-    if args.resample_rate != 0: #16000
-        downsample_tfm = Resample(args.resample_rate)
-        transform_list.append(downsample_tfm)
-    if args.trim:
-        trim_tfm = TrimSilence()
-        transform_list.append(trim_tfm)
-    if args.clip_length != 0: #160000
-        truncate_tfm = Truncate(length = args.clip_length)
-        transform_list.append(truncate_tfm)
-
-    tensor_tfm = ToTensor()
-    transform_list.append(tensor_tfm)
-    mfcc_tfm = MFCC(n_mfcc= args.n_mfcc, n_fft=args.n_fft, n_mels=args.n_mels)
-    transform_list.append(mfcc_tfm)
-    #mel_transforms = MelSpectrogram(n_fft=400, n_mels=128)
-    #transform_list.append(mel_transforms)
-    transform = torchvision.transforms.Compose(transform_list)
-    return transform
-
-#training loops
-def train_loop(args, model, dataloader_train, dataloader_val = None):
-    """
-    Training loop 
-    :param args: dict with all the argument values
-    :param model: ECAPA-TDNN model
-    :param dataloader_train: dataloader object with training data
-    :param dataloader_val: dataloader object with validation data
-    :return model: trained ECAPA-TDNN model
-    """
-    print('Training start')
-    #send to gpu
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    #loss
-    if args.loss == 'MSE':
-        criterion = torch.nn.MSELoss()
-    elif args.loss == 'BCE':
-        criterion = torch.nn.BCEWithLogitsLoss()
-    else:
-        raise ValueError('MSE must be given for loss parameter')
-    #optimizer
-    if args.optim == 'adam':
-        optim = torch.optim.Adam([p for p in model.parameters() if p.requires_grad],lr=args.learning_rate)
-    elif args.optim == 'adamw':
-         optim = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=args.learning_rate)
-    else:
-        raise ValueError('adam must be given for optimizer parameter')
-    
-    if args.scheduler == 'onecycle':
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(optim, max_lr=args.max_lr, steps_per_epoch=len(dataloader_train), epochs=args.epochs)
-    else:
-        scheduler = None
-    
-    #train
-    for e in range(args.epochs):
-        training_loss = list()
-        #t0 = time.time()
-        model.train()
-        for batch in tqdm(dataloader_train):
-            x = batch['mfcc']
-            targets = batch['targets']
-            x, targets = x.to(device), targets.to(device)
-            optim.zero_grad()
-            o = model(x)
-            loss = criterion(o, targets)
-            loss.backward()
-            optim.step()
-            if scheduler is not None:
-                scheduler.step()
-            loss_item = loss.item()
-            training_loss.append(loss_item)
-
-        if e % 10 == 0:
-            #SET UP LOGS
-            if scheduler is not None:
-                lr = scheduler.get_last_lr()
-            else:
-                lr = args.learning_rate
-            logs = {'epoch': e, 'optim':args.optim, 'loss_fn': args.loss, 'lr': lr}
-    
-            logs['training_loss_list'] = training_loss
-            training_loss = np.array(training_loss)
-            logs['running_loss'] = np.sum(training_loss)
-            logs['training_loss'] = np.mean(training_loss)
-
-            print('RUNNING LOSS', e, np.sum(training_loss) )
-            print(f'Training loss: {np.mean(training_loss)}')
-
-            if dataloader_val is not None:
-                print("Validation start")
-                validation_loss = val_loop(model, criterion, dataloader_val)
-
-                logs['val_loss_list'] = validation_loss
-                validation_loss = np.array(validation_loss)
-                logs['val_running_loss'] = np.sum(validation_loss)
-                logs['val_loss'] = np.mean(validation_loss)
-                
-                print('RUNNING VALIDATION LOSS',e, np.sum(validation_loss) )
-                print(f'Validation loss: {np.mean(validation_loss)}')
-            
-            #SAVE LOGS
-            json_string = json.dumps(logs)
-            logs_path = os.path.join(args.exp_dir, 'logs_epoch{}.json'.format(e))
-            with open(logs_path, 'w') as outfile:
-                json.dump(json_string, outfile)
-            
-            #SAVE CURRENT MODEL
-            print(f'Saving epoch {e}')
-            mdl_path = os.path.join(args.exp_dir, 'ecapa_tdnn_mdl_epoch{}.pt'.format(e))
-            torch.save(model.state_dict(), mdl_path)
-
-            optim_path = os.path.join(args.exp_dir, 'ecapa_tdnn_optim_epoch{}.pt'.format(e))
-            torch.save(optim.state_dict(), optim_path)
-
-            if args.cloud:
-                upload(args.cloud_dir, logs_path, args.bucket)
-                #upload_from_memory(model.state_dict(), args.cloud_dir, mdl_path, args.bucket)
-                upload(args.cloud_dir, mdl_path, args.bucket)
-                upload(args.cloud_dir, optim_path, args.bucket)
-
-    print('Saving final model')
-    mdl_path = os.path.join(args.exp_dir, '{}_{}_{}_{}_epoch{}_ecapa_tdnn_mdl.pt'.format(args.dataset,args.model_size, args.n_class, args.optim, args.epochs))
-    torch.save(model.state_dict(), mdl_path)
-
-    optim_path = os.path.join(args.exp_dir, '{}_{}_{}_{}_epoch{}_ecapa_tdnn_optim.pt'.format(args.dataset,args.model_size, args.n_class, args.optim, args.epochs))
-    torch.save(optim.state_dict(), optim_path)
-
-    if args.cloud:
-        upload(args.cloud_dir, mdl_path, args.bucket)
-        upload(args.cloud_dir, optim_path, args.bucket)
-
-    print('Training finished')
-    return model
-
-def val_loop(model, criterion, dataloader_val):
-    '''
-    Validation loop
-    :param model: ECAPA-TDNN model
-    :param criterion: loss function
-    :param dataloader_val: dataloader object with validation data
-    :return validation_loss: list with validation loss for each batch
-    '''
-    validation_loss = list()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    with torch.no_grad():
-        model.eval()
-        for batch in tqdm(dataloader_val):
-            x = batch['mfcc']
-            targets = batch['targets']
-            x, targets = x.to(device), targets.to(device)
-            o = model(x)
-            val_loss = criterion(o, targets)
-            validation_loss.append(val_loss.item())
-
-    return validation_loss
-
-def eval_loop(model, dataloader_eval, exp_dir, cloud=False, cloud_dir=None, bucket=None):
-    """
-    Start model evaluation
-    :param model: ECAPA-TDNN model
-    :param dataloader_eval: dataloader object with evaluation data
-    :param exp_dir: specify LOCAL output directory as str
-    :param cloud: boolean to specify whether to save everything to google cloud storage
-    :param cloud_dir: if saving to the cloud, you can specify a specific place to save to in the CLOUD bucket
-    :param bucket: google cloud storage bucket object
-    :return preds: model predictions
-    :return targets: model targets (actual values)
-    """
-    print('Evaluation start')
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    outputs = []
-    t = []
-    model = model.to(device)
-    with torch.no_grad():
-        model.eval()
-        for batch in tqdm(dataloader_eval):
-            x = batch['mfcc']
-            x = x.to(device)
-            targets = batch['targets']
-            targets = targets.to(device)
-            o = model(x)
-            outputs.append(o)
-            t.append(targets)
-
-    outputs = torch.cat(outputs).cpu().detach()
-    t = torch.cat(t).cpu().detach()
-    # SAVE PREDICTIONS AND TARGETS 
-    pred_path = os.path.join(exp_dir, 'ecapa_tdnn_eval_predictions.pt')
-    target_path = os.path.join(exp_dir, 'ecapa_tdnn_eval_targets.pt')
-    torch.save(outputs, pred_path)
-    torch.save(t, target_path)
-
-    if cloud:
-        upload(cloud_dir, pred_path, bucket)
-        upload(cloud_dir, target_path, bucket)
-
-    print('Evaluation finished')
-    return outputs, t
-
-def embedding_loop(model, dataloader,embedding_type='ft'):
-    """
-    Run a specific subtype of evaluation for getting embeddings.
-    :param model: W2V2 model
-    :param dataloader_eval: dataloader object with data to get embeddings for
-    :param embedding_type: string specifying whether embeddings should be extracted from classification head (ft) or base pretrained model (pt)
-    :return embeddings: an np array containing the embeddings
-    """
-    print('Getting embeddings')
-    embeddings = np.array([])
-
-    # send to gpu
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-
-    with torch.no_grad():
-        model.eval()
-        for batch in tqdm(dataloader):
-            x = batch['mfcc']
-            x = x.to(device)
-            e = model.extract_embedding(x, embedding_type)
-            e = e.cpu().numpy()
-            if embeddings.size == 0:
-                embeddings = e
-            else:
-                embeddings = np.append(embeddings, e, axis=0)
-        
-    return embeddings
-
-#main running functions
-def train(args):
+def train_ecapa_tdnn(args):
     """
     Run finetuning from start to finish
     :param args: dict with all the argument values
@@ -431,29 +43,46 @@ def train(args):
         val_df = val_df.iloc[0:8,:]
         test_df = test_df.iloc[0:8,:]
 
-    # (2) get data transforms    
-    transform = get_transform(args)
+    # (2) set up audio configuration for transforms
+    audio_conf = {'checkpoint': args.checkpoint, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
+                  'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':args.n_mfcc, 'n_fft': args.n_fft, 'n_mels': args.n_mels}
 
     # (3) set up datasets and dataloaders
-    dataset_train = WaveformDataset(train_df, target_labels = args.target_labels, transform = transform)
-    dataset_val = WaveformDataset(val_df, target_labels = args.target_labels, transform = transform)
-    dataset_test = WaveformDataset(test_df, target_labels = args.target_labels, transform = transform)
-
+    dataset_train = ECAPA_TDNNDataset(train_df, target_labels=args.target_labels, audio_conf=audio_conf,
+                                      prefix=args.prefix, bucket=args.bucket, librosa=args.lib)
+    dataset_val = ECAPA_TDNNDataset(val_df, target_labels=args.target_labels, audio_conf=audio_conf,
+                                      prefix=args.prefix, bucket=args.bucket, librosa=args.lib)
+    dataset_test = ECAPA_TDNNDataset(test_df, target_labels=args.target_labels, audio_conf=audio_conf,
+                                      prefix=args.prefix, bucket=args.bucket, librosa=args.lib)
+    
     dataloader_train = DataLoader(dataset_train, batch_size = args.batch_size, shuffle = True, num_workers = args.num_workers)
     dataloader_val= DataLoader(dataset_val, batch_size = 1, shuffle = False, num_workers = args.num_workers)
     dataloader_test= DataLoader(dataset_test, batch_size = args.batch_size, shuffle = False, num_workers = args.num_workers)
     #dataloader_test = DataLoader(dataset_test, batch_size = len(diag_test), shuffle = False, num_workers = args.num_workers)
 
     # (4) initialize model
-    model = ECAPA_TDNNForSpeechClassification(args.n_mfcc, args.n_labels, args.activation, args.final_dropout, args.layernorm) #should look like the finetuned model (so using model_args). If pretrained model, will resort to current args
+    model = ECAPA_TDNNForSpeechClassification(n_size=args.n_mfcc, label_dim=args.n_class, lin_neurons=192,
+                                              activation=args.activation, final_dropout=args.final_dropout, layernorm=args.layernorm)
     
     # (5) start fine-tuning classification
-    model = train_loop(args, model, dataloader_train, dataloader_val)
+    model = train(model, dataloader_train, dataloader_val, 
+                  args.optim, args.learning_rate, args.loss,
+                  args.scheduler, args.max_lr, args.epochs,
+                  args.exp_dir, args.cloud, args.cloud_dir, args.bucket)
 
+    print('Saving final model')
+    mdl_path = os.path.join(args.exp_dir, '{}_{}_{}_epoch{}_ecapa_tdnn_mdl.pt'.format(args.dataset, args.n_class, args.optim, args.epochs))
+    torch.save(model.state_dict(), mdl_path)
+
+    if args.cloud:
+        upload(args.cloud_dir, mdl_path, args.bucket)
+
+    
     # (6) start evaluating
-    preds, targets = eval_loop(model, dataloader_test, args.exp_dir, args.cloud, args.cloud_dir, args.bucket, args.layer, args.weighted_layers)
+    preds, targets = evaluation(model, dataloader_test, 
+                                args.exp_dir, args.cloud, args.cloud_dir, args.bucket)
 
-    print('Finetuning finished')
+    print('Training finished')
 
 
 def eval_only(args):
@@ -461,37 +90,46 @@ def eval_only(args):
     Run only evaluation of a pre-existing model
     :param args: dict with all the argument values
     """
-    assert args.checkpoint is not None, 'must give a model checkpoint to load for embedding extraction.'
+    assert args.checkpoint is not None, 'must give a model checkpoint to load'
     # get original model args (or if no finetuned model, uses your original args)
     model_args, args.finetuned_mdl_path = setup_mdl_args(args)
     
    # (1) load data
     if '.csv' in args.data_split_root: 
         eval_df = pd.read_csv(args.data_split_root, index_col = 'uid')
+
+        if 'distortions' not in eval_df.columns:
+            eval_df["distortions"]=((eval_df["distorted Cs"]+eval_df["distorted V"])>0).astype(int)
     else:
         train_df, val_df, eval_df = load_data(args.data_split_root, args.exp_dir, args.cloud, args.cloud_dir, args.bucket)
     
     if args.debug:
         eval_df = eval_df.iloc[0:8,:]
 
-    # (2) get data transforms    
-    transform = get_transform(args)
+   # (2) set up audio configuration for transforms
+    audio_conf = {'checkpoint': args.checkpoint, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
+                  'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':args.n_mfcc, 'n_fft': args.n_fft, 'n_mels': args.n_mels}
+
 
     # (3) set up datasets and dataloaders
-    dataset_eval = WaveformDataset(eval_df, target_labels = model_args.target_labels, transform = transform)  #the dataset should be selecting targets based on the FINETUNED model, so if there is a mismatch, it defaults to the arguments used for finetuning
+    dataset_eval = ECAPA_TDNNDataset(eval_df, target_labels=model_args.target_labels, audio_conf=audio_conf,
+                                      prefix=args.prefix, bucket=args.bucket, librosa=args.lib)
+    
     dataloader_eval= DataLoader(dataset_eval, batch_size = args.batch_size, shuffle = False, num_workers = args.num_workers)
-    #dataloader_test = DataLoader(dataset_test, batch_size = len(diag_test), shuffle = False, num_workers = args.num_workers)
-
+    
     # (4) initialize model
-    model = ECAPA_TDNNForSpeechClassification(model_args.n_mfcc, model_args.n_labels, model_args.activation, model_args.final_dropout, model_args.layernorm) #should look like the finetuned model (so using model_args). If pretrained model, will resort to current args
+    model = ECAPA_TDNNForSpeechClassification(n_size=model_args.n_mfcc, label_dim=model_args.n_class, lin_neurons=192,
+                                              activation=model_args.activation, final_dropout=model_args.final_dropout, layernorm=model_args.layernorm)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     sd = torch.load(args.checkpoint, map_location=device)
     model.load_state_dict(sd, strict=False)
 
-    # (6) start evaluating
-    preds, targets = eval_loop(model, dataloader_eval, args.exp_dir, args.cloud, args.cloud_dir, args.bucket, args.layer, args.weighted_layers)
+     # (6) start evaluating
+    preds, targets = evaluation(model, dataloader_eval, 
+                                args.exp_dir, args.cloud, args.cloud_dir, args.bucket)
 
+   
     print('Evaluation finished')
 
 def get_embeddings(args):
@@ -508,48 +146,46 @@ def get_embeddings(args):
     assert '.csv' in args.data_split_root, f'A csv file is necessary for embedding extraction. Please make sure this is a full file path: {args.data_split_root}'
     annotations_df = pd.read_csv(args.data_split_root, index_col = 'uid') #data_split_root should use the CURRENT arguments regardless of the finetuned model
 
+    if 'distortions' not in annotations_df.columns:
+        annotations_df["distortions"]=((annotations_df["distorted Cs"]+annotations_df["distorted V"])>0).astype(int)
+
     if args.debug:
         annotations_df = annotations_df.iloc[0:8,:]
 
-    # (2) get transforms
-    transform = get_transform(args)
+    # (2) set up audio configuration for transforms
+    audio_conf = {'checkpoint': args.checkpoint, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
+                  'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':args.n_mfcc, 'n_fft': args.n_fft, 'n_mels': args.n_mels}
+
     
     # (3) set up dataloaders
-    waveform_dataset = WaveformDataset(annotations_df = annotations_df, target_labels = model_args.target_labels, transform = transform) #not super important for embeddings, but the dataset should be selecting targets based on the FINETUNED model
+    waveform_dataset = ECAPA_TDNNDataset(annotations_df, target_labels=model_args.target_labels, audio_conf=audio_conf,
+                                      prefix=args.prefix, bucket=args.bucket, librosa=args.lib)
+     #not super important for embeddings, but the dataset should be selecting targets based on the FINETUNED model
     dataloader = DataLoader(waveform_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     
-    # (4) set up embedding model
-    model = ECAPA_TDNNForSpeechClassification(model_args.n_mfcc, model_args.n_labels, model_args.activation, model_args.final_dropout, model_args.layernorm) #should look like the finetuned model (so using model_args). If pretrained model, will resort to current args
+    # (4) initialize model
+    model = ECAPA_TDNNForSpeechClassification(n_size=model_args.n_mfcc, label_dim=model_args.n_class, lin_neurons=192,
+                                              activation=model_args.activation, final_dropout=model_args.final_dropout, layernorm=model_args.layernorm)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     sd = torch.load(args.checkpoint, map_location=device)
     model.load_state_dict(sd, strict=False)
     
     # (5) get embeddings
-    embeddings = embedding_loop(model, dataloader, args.embedding_type)
+    embeddings = embedding_extraction(model, dataloader, args.embedding_type)
         
     df_embed = pd.DataFrame([[r] for r in embeddings], columns = ['embedding'], index=annotations_df.index)
 
     try:
-        pqt_path = '{}/{}_{}_ecapa_tdnn_embeddings.pqt'.format(args.exp_dir, args.dataset, args.embedding_type)
+        pqt_path = '{}/{}_ecapa_tdnn_{}_embeddings.pqt'.format(args.exp_dir, args.dataset, args.embedding_type)
         
-        # if args.finetuned_mdl_path is not None:
-        #     args.finetuned_mdl_path = args.finetuned_mdl_path.replace(os.path.commonprefix([args.dataset, os.path.basename(args.finetuned_mdl_path)]), '')
-        #     pqt_path = '{}/{}_{}_{}_embeddings.pqt'.format(args.exp_dir, args.dataset, os.path.basename(args.finetuned_mdl_path)[:-3], args.embedding_type) #TODO: can mess with naming conventions later
-        # else:
-        #     pqt_path = '{}/{}_{}_{}_embeddings.pqt'.format(args.exp_dir, args.dataset, os.path.basename(args.checkpoint), args.embedding_type) #TODO: can mess with naming conventions later
-        df_embed.to_parquet(path=pqt_path, index=True, engine='pyarrow') #TODO: fix
+        df_embed.to_parquet(path=pqt_path, index=True, engine='pyarrow') 
 
         if args.cloud:
             upload(args.cloud_dir, pqt_path, args.bucket)
     except:
         print('Unable to save as pqt, saving instead as csv')
-        csv_path = '{}/{}_{_ecapa_tdnn_embeddings.csv'.format(args.exp_dir, args.dataset, args.embedding_type)
-        # if args.finetuned_mdl_path is not None:
-        #     args.finetuned_mdl_path = args.finetuned_mdl_path.replace(os.path.commonprefix([args.dataset, os.path.basename(args.finetuned_mdl_path)]), '')
-        #     csv_path = '{}/{}_{}_{}_embeddings.csv'.format(args.exp_dir, args.dataset, os.path.basename(args.finetuned_mdl_path)[:-3], args.embedding_type)
-        # else:
-        #     csv_path = '{}/{}_{}_{}_embeddings.csv'.format(args.exp_dir, args.dataset, os.path.basename(args.checkpoint), args.embedding_type)
+        csv_path = '{}/{}_ecapa_tdnn_{}_embeddings.csv'.format(args.exp_dir, args.dataset, args.embedding_type)
         df_embed.to_csv(csv_path, index=True)
 
         if args.cloud:
@@ -649,12 +285,13 @@ def main():
             args.batch_size = 1
 
     # (7) check if checkpoint is stored in gcs bucket or confirm it exists on local machine
-    if args.checkpoint[:5] =='gs://':
-        checkpoint = args.checkpoint[5:].replace(args.bucket_name,'')[1:]
-        checkpoint = download_model(checkpoint, bucket)
-        args.checkpoint = checkpoint
-    else:
-        assert os.path.exists(args.checkpoint), 'Current checkpoint does not exist on local machine'
+    if args.checkpoint is not None:
+        if args.checkpoint[:5] =='gs://':
+            checkpoint = args.checkpoint[5:].replace(args.bucket_name,'')[1:]
+            checkpoint = download_model(checkpoint, bucket)
+            args.checkpoint = checkpoint
+        else:
+            assert os.path.exists(args.checkpoint), 'Current checkpoint does not exist on local machine'
 
     # (8) dump arguments
     args_path = "%s/args.pkl" % args.exp_dir
@@ -670,7 +307,7 @@ def main():
     # (10) run model
     print(args.mode)
     if args.mode == "train":
-        train(args)
+        train_ecapa_tdnn(args)
 
     elif args.mode == 'eval':
         eval_only(args)
