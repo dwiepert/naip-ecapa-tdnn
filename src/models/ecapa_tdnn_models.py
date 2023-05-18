@@ -27,7 +27,7 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
 
         self.model = ECAPA_TDNN(self.n_size, lin_neurons=self.lin_neurons, device='cuda')
 
-        self.classifier = ClassificationHead(self.n_size, self.label_dim, 
+        self.classifier = ClassificationHead(self.lin_neurons, self.label_dim, 
                                              activation, final_dropout, layernorm)
 
     def extract_embedding(self, x, embedding_type = 'ft'):
@@ -46,8 +46,10 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
             e = activation['embeddings']
 
         elif embedding_type == 'pt':
-            x = x.squeeze().transpose(1, 2)
+            x = torch.squeeze(x, dim=1)
+            x = x.transpose(1, 2)
             e = self.model(x)
+            e = torch.squeeze(e, dim=1)
 
         else:
             raise ValueError('Embedding type must be finetune (ft) or pretrain (pt)')
@@ -57,8 +59,10 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
     def forward(self, x):
         """
         """
-        x = x.squeeze().transpose(1, 2)
+        x = torch.squeeze(x, dim=1)
+        x = x.transpose(1, 2)
         x = self.model(x)
+        x = torch.squeeze(x, dim=1)
         x = self.classifier(x)
         return torch.squeeze(x, dim=1)
     

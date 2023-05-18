@@ -92,7 +92,7 @@ def eval_only(args):
     """
     assert args.checkpoint is not None, 'must give a model checkpoint to load'
     # get original model args (or if no finetuned model, uses your original args)
-    model_args, args.finetuned_mdl_path = setup_mdl_args(args)
+    model_args = load_args(args, args.checkpoint)
     
    # (1) load data
     if '.csv' in args.data_split_root: 
@@ -140,7 +140,7 @@ def get_embeddings(args):
     print('Running Embedding Extraction: ')
     assert args.checkpoint is not None, 'must give a model checkpoint to load for embedding extraction. '
     # Get original 
-    model_args, args.finetuned_mdl_path = setup_mdl_args(args)
+    model_args = load_args(args, args.checkpoint)
 
     # (1) load data to get embeddings for
     assert '.csv' in args.data_split_root, f'A csv file is necessary for embedding extraction. Please make sure this is a full file path: {args.data_split_root}'
@@ -200,16 +200,16 @@ def main():
     parser.add_argument('-i','--prefix',default='speech_ai/speech_lake/', help='Input directory or location in google cloud storage bucket containing files to load')
     parser.add_argument("-s", "--study", choices = ['r01_prelim','speech_poc_freeze_1', None], default='speech_poc_freeze_1', help="specify study name")
     parser.add_argument("-d", "--data_split_root", default='gs://ml-e107-phi-shared-aif-us-p/speech_ai/share/data_splits/amr_subject_dedup_594_train_100_test_binarized_v20220620/test.csv', help="specify file path where datasplit is located. If you give a full file path to classification, an error will be thrown. On the other hand, evaluation and embedding expects a single .csv file.")
-    parser.add_argument('-l','--label_txt', default='./labels.txt')
+    parser.add_argument('-l','--label_txt', default='/Users/m144443/Documents/GitHub/mayo-ecapa-tdnn/src/labels.txt')
     parser.add_argument('--lib', default=False, type=bool, help="Specify whether to load using librosa as compared to torch audio")
-    parser.add_argument("-c", "--checkpoint", default="gs://ml-e107-phi-shared-aif-us-p/m144443/checkpoints/wav2vec2-base-960h", help="specify path to pre-trained model weight checkpoint")
+    parser.add_argument("-c", "--checkpoint", default='/Users/m144443/Documents/GitHub/mayo-ecapa-tdnn/experiments/train/amr_subject_dedup_594_train_100_test_binarized_v20220620_5_adam_epoch1_ecapa_tdnn_mdl.pt', help="specify path to pre-trained model weight checkpoint")
     #GCS
     parser.add_argument('-b','--bucket_name', default='ml-e107-phi-shared-aif-us-p', help="google cloud storage bucket name")
     parser.add_argument('-p','--project_name', default='ml-mps-aif-afdgpet01-p-6827', help='google cloud platform project name')
-    parser.add_argument('--cloud', default=True, type=bool, help="Specify whether to save everything to cloud")
+    parser.add_argument('--cloud', default=False, type=bool, help="Specify whether to save everything to cloud")
     #output
     parser.add_argument("--dataset", default=None,type=str, help="When saving, the dataset arg is used to set file names. If you do not specify, it will assume the lowest directory from data_split_root")
-    parser.add_argument("-o", "--exp_dir", default="./experiments_weighted/eval", help='specify LOCAL output directory')
+    parser.add_argument("-o", "--exp_dir", default="./experiments/embedding", help='specify LOCAL output directory')
     parser.add_argument('--cloud_dir', default='m144443/temp_out/w2v2_ft_weighted', type=str, help="if saving to the cloud, you can specify a specific place to save to in the CLOUD bucket")
     #Mode specific
     parser.add_argument("-m", "--mode", choices=['train','eval','extraction'], default='extraction')
@@ -220,7 +220,6 @@ def main():
     parser.add_argument("--clip_length", default=160000, type=int, help="If truncating audio, specify clip length in # of frames. 0 = no truncation")
     parser.add_argument("--trim", default=True, type=int, help="trim silence")
     #Model parameters
-    parser.add_argument("-pm", "--pooling_mode", default="mean", help="specify method of pooling last hidden layer", choices=['mean','sum','max'])
     parser.add_argument("-bs", "--batch_size", type=int, default=8, help="specify batch size")
     parser.add_argument("-nw", "--num_workers", type=int, default=0, help="specify number of parallel jobs to run for data loader")
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.0003, help="specify learning rate")

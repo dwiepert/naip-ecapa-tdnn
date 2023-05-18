@@ -82,7 +82,7 @@ def train(model, dataloader_train, dataloader_val = None,
                 lr = scheduler.get_last_lr()
             else:
                 lr = learning_rate
-            logs = {'epoch': e, 'optim':optimizer, 'loss_fn': loss_fn, 'lr': lr}
+            logs = {'epoch': e, 'optim':optim, 'loss_fn': loss_fn, 'lr': lr}
     
             logs['training_loss_list'] = training_loss
             training_loss = np.array(training_loss)
