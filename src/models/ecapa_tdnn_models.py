@@ -43,7 +43,7 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
         """
         Extract an embedding from various parts of the model
         :param x: waveform input (batch size, input size)
-        :param embedding_type: 'ft', 'pt', or 'wt', to indicate whether to extract from classification head (ft), hidden state (pt), or weighted sum mat mul (wt)
+        :param embedding_type: 'ft', 'pt' to indicate whether to extract from classification head (ft), base model (pt)
         :return e: embeddings for a batch (batch_size, embedding dim)
         """
         if embedding_type == 'ft':

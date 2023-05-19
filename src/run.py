@@ -232,7 +232,7 @@ def main():
     parser.add_argument("--max_lr", type=float, default=0.01, help="specify max lr for lr scheduler")
     #classification head parameters
     parser.add_argument("--activation", type=str, default='relu', help="specify activation function to use for classification head")
-    parser.add_argument("--final_dropout", type=float, default=0.25, help="specify dropout probability for final dropout layer in classification head")
+    parser.add_argument("--final_dropout", type=float, default=0.2, help="specify dropout probability for final dropout layer in classification head")
     parser.add_argument("--layernorm", type=bool, default=False, help="specify whether to include the LayerNorm in classification head")
     #ecapa-tdnn specific
     parser.add_argument("--n_mfcc", default=80, type=int, help='specify number of MFCCs for spectrogram')
