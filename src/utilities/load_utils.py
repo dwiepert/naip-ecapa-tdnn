@@ -16,6 +16,24 @@ import pandas as pd
 from google.cloud import storage, bigquery
 
 #GCS helper functions
+def gcs_model_exists(model_path, gcs_prefix, exp_dir, bucket):
+    """
+    check whether a model exists either in GCS bucket (which it then downloads), or on local machine
+    :param model_path: specify what model path you are loading args for
+    :param gcs_prefix: location of file in GCS (if it exists there, else can be None)
+    :param exp_dir: specify LOCAL output directory as str
+    :param bucket: google cloud storage bucket object
+    :return model_path: updated model path (in case it needed to be downloaded from gcs)
+    """
+    if model_path[:5] =='gs://':
+        mdl_path = model_path[5:].replace(gcs_prefix,'')[1:]
+        model_path = download_model(mdl_path, exp_dir, bucket)
+        
+    else:
+        assert os.path.exists(model_path), f'Current model ({model_path}) does not exist in bucket or on local machine'
+
+    return model_path
+
 def download_model(gcs_path,outpath, bucket):
     '''
     Download a model from google cloud storage and the args.pkl file located in the same folder(if it exists)
@@ -25,7 +43,7 @@ def download_model(gcs_path,outpath, bucket):
     :param outpath: string path to directory where you want the model to be stored
     :param bucket: initialized GCS bucket object
     Outputs:
-    :return mdl_path: a string path to the local version of the finetuned model (args.pkl will be in the same folder as this model)
+    :return mdl_path: a string path to the local version of the model (args.pkl will be in the same folder as this model)
     '''
     if not os.path.exists(outpath):
         os.makedirs(outpath)
@@ -85,10 +103,11 @@ def load_args(args, model_path):
     
     return model_args
 
-def load_data(data_split_root, exp_dir, cloud, cloud_dir, bucket):
+def load_data(data_split_root, target_labels, exp_dir, cloud, cloud_dir, bucket):
     """
     Load the train and test data from a directory. Assumes the train and test data will exist in this directory under train.csv and test.csv
     :param data_split_root: specify str path where datasplit csvs are located
+    :param target_labels: list of target labels
     :param exp_dir: specify LOCAL output directory as str
     :param cloud: boolean to specify whether to save everything to google cloud storage
     :param cloud_dir: if saving to the cloud, you can specify a specific place to save to in the CLOUD bucket
@@ -119,5 +138,10 @@ def load_data(data_split_root, exp_dir, cloud, cloud_dir, bucket):
         val_df["distortions"]=((val_df["distorted Cs"]+val_df["distorted V"])>0).astype(int)
     if 'distortions' not in test_df.columns:
         test_df["distortions"]=((test_df["distorted Cs"]+test_df["distorted V"])>0).astype(int)
+
+    #remove NA
+    train_df=train_df.dropna(subset=target_labels)
+    val_df=val_df.dropna(subset=target_labels)
+    test_df=test_df.dropna(subset=target_labels)
 
     return train_df, val_df, test_df

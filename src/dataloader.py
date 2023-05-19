@@ -50,7 +50,7 @@ class ECAPA_TDNNDataset(Dataset):
 
         #AUDIO CONFIGURATION PARAMETERS
         self.audio_conf = audio_conf
-        self.checkpoint = self.audio_conf.get('checkpoint')
+        self.trained_mdl_path= self.audio_conf.get('trained_mdl_path')
         ### AUDIO TRANSFORMATIONS
         self.resample_rate = self.audio_conf.get('resample_rate') #resample if resample rate != 0 and if resample rate != sample rate
         self.reduce = self.audio_conf.get('reduce') #reduce to monochannel if True

@@ -4,7 +4,7 @@ ECAPA-TDNN model classes
 Base ECAPA-TDNN model from speech brain
 
 Last modified: 05/2023
-Author: Daniela Wiepert
+Author: Daniela Wiepert, Sampath Gogineni
 Email: wiepert.daniela@mayo.edu
 File: ecapa_tdnn_models.py
 '''
@@ -17,6 +17,15 @@ from utilities import *
 
 class ECAPA_TDNNForSpeechClassification(nn.Module):
     """
+    ECAPA-TDNN class for speech feature classification. Wraps a speechbrain ECAPA_TDNN instance.
+    Sets up a Classification Head.
+
+    :param n_size: input size to base model
+    :param label_dim: specify number of categories to classify
+    :param lin_neurons: number of neurons in lienar layers, output of model will be (batch size, 1, lin_neurons). Functions as embedding dime
+    :param activation: activation function for classification head
+    :param final_dropout: amount of dropout to use in classification head
+    :param layernorm: include layer normalization in classification head
     """
     def __init__(self, n_size=80, label_dim=6, lin_neurons=192,
                   activation='relu', final_dropout=0.23, layernorm=False):
@@ -32,6 +41,10 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
 
     def extract_embedding(self, x, embedding_type = 'ft'):
         """
+        Extract an embedding from various parts of the model
+        :param x: waveform input (batch size, input size)
+        :param embedding_type: 'ft', 'pt', or 'wt', to indicate whether to extract from classification head (ft), hidden state (pt), or weighted sum mat mul (wt)
+        :return e: embeddings for a batch (batch_size, embedding dim)
         """
         if embedding_type == 'ft':
             activation = {}
@@ -58,6 +71,9 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
     
     def forward(self, x):
         """
+        Run model
+        :param x: input values to the model (batch_size, input_size)
+        :return squeezed classifier output (batch_size, num_labels)
         """
         x = torch.squeeze(x, dim=1)
         x = x.transpose(1, 2)

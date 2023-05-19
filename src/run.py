@@ -2,7 +2,7 @@
 ECAPA-TDNN run function 
 
 Last modified: 05/2023
-Author: Daniela Wiepert
+Author: Daniela Wiepert, Sampath Gogineni
 Email: wiepert.daniela@mayo.edu
 File: run.py
 '''
@@ -33,10 +33,10 @@ def train_ecapa_tdnn(args):
     Run finetuning from start to finish
     :param args: dict with all the argument values
     """
-    print('Running finetuning: ')
+    print('Running training: ')
     # (1) load data
     assert '.csv' not in args.data_split_root, f'May have given a full file path, please confirm this is a directory: {args.data_split_root}'
-    train_df, val_df, test_df = load_data(args.data_split_root, args.exp_dir, args.cloud, args.cloud_dir, args.bucket)
+    train_df, val_df, test_df = load_data(args.data_split_root, args.target_labels, args.exp_dir, args.cloud, args.cloud_dir, args.bucket)
 
     if args.debug:
         train_df = train_df.iloc[0:8,:]
@@ -44,7 +44,7 @@ def train_ecapa_tdnn(args):
         test_df = test_df.iloc[0:8,:]
 
     # (2) set up audio configuration for transforms
-    audio_conf = {'checkpoint': args.checkpoint, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
+    audio_conf = {'trained_mdl_path': args.trained_mdl_path, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
                   'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':args.n_mfcc, 'n_fft': args.n_fft, 'n_mels': args.n_mels}
 
     # (3) set up datasets and dataloaders
@@ -90,9 +90,9 @@ def eval_only(args):
     Run only evaluation of a pre-existing model
     :param args: dict with all the argument values
     """
-    assert args.checkpoint is not None, 'must give a model checkpoint to load'
+    assert args.trained_mdl_path is not None, 'must give a model to load'
     # get original model args (or if no finetuned model, uses your original args)
-    model_args = load_args(args, args.checkpoint)
+    model_args = load_args(args, args.trained_mdl_path)
     
    # (1) load data
     if '.csv' in args.data_split_root: 
@@ -100,14 +100,16 @@ def eval_only(args):
 
         if 'distortions' not in eval_df.columns:
             eval_df["distortions"]=((eval_df["distorted Cs"]+eval_df["distorted V"])>0).astype(int)
+        
+        eval_df = eval_df.dropna(subset=args.target_labels)
     else:
-        train_df, val_df, eval_df = load_data(args.data_split_root, args.exp_dir, args.cloud, args.cloud_dir, args.bucket)
+        train_df, val_df, eval_df = load_data(args.data_split_root, args.target_labels, args.exp_dir, args.cloud, args.cloud_dir, args.bucket)
     
     if args.debug:
         eval_df = eval_df.iloc[0:8,:]
 
    # (2) set up audio configuration for transforms
-    audio_conf = {'checkpoint': args.checkpoint, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
+    audio_conf = {'trained_mdl_path': args.trained_mdl_path, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
                   'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':args.n_mfcc, 'n_fft': args.n_fft, 'n_mels': args.n_mels}
 
 
@@ -122,7 +124,7 @@ def eval_only(args):
                                               activation=model_args.activation, final_dropout=model_args.final_dropout, layernorm=model_args.layernorm)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    sd = torch.load(args.checkpoint, map_location=device)
+    sd = torch.load(args.trained_mdl_path, map_location=device)
     model.load_state_dict(sd, strict=False)
 
      # (6) start evaluating
@@ -138,9 +140,9 @@ def get_embeddings(args):
     :param args: dict with all the argument values
     """
     print('Running Embedding Extraction: ')
-    assert args.checkpoint is not None, 'must give a model checkpoint to load for embedding extraction. '
+    assert args.trained_mdl_path is not None, 'must give a model to load for embedding extraction. '
     # Get original 
-    model_args = load_args(args, args.checkpoint)
+    model_args = load_args(args, args.trained_mdl_path)
 
     # (1) load data to get embeddings for
     assert '.csv' in args.data_split_root, f'A csv file is necessary for embedding extraction. Please make sure this is a full file path: {args.data_split_root}'
@@ -153,7 +155,7 @@ def get_embeddings(args):
         annotations_df = annotations_df.iloc[0:8,:]
 
     # (2) set up audio configuration for transforms
-    audio_conf = {'checkpoint': args.checkpoint, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
+    audio_conf = {'trained_mdl_path': args.trained_mdl_path, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
                   'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':args.n_mfcc, 'n_fft': args.n_fft, 'n_mels': args.n_mels}
 
     
@@ -168,7 +170,7 @@ def get_embeddings(args):
                                               activation=model_args.activation, final_dropout=model_args.final_dropout, layernorm=model_args.layernorm)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    sd = torch.load(args.checkpoint, map_location=device)
+    sd = torch.load(args.trained_mdl_path, map_location=device)
     model.load_state_dict(sd, strict=False)
     
     # (5) get embeddings
@@ -202,7 +204,7 @@ def main():
     parser.add_argument("-d", "--data_split_root", default='gs://ml-e107-phi-shared-aif-us-p/speech_ai/share/data_splits/amr_subject_dedup_594_train_100_test_binarized_v20220620/test.csv', help="specify file path where datasplit is located. If you give a full file path to classification, an error will be thrown. On the other hand, evaluation and embedding expects a single .csv file.")
     parser.add_argument('-l','--label_txt', default='/Users/m144443/Documents/GitHub/mayo-ecapa-tdnn/src/labels.txt')
     parser.add_argument('--lib', default=False, type=bool, help="Specify whether to load using librosa as compared to torch audio")
-    parser.add_argument("-c", "--checkpoint", default='/Users/m144443/Documents/GitHub/mayo-ecapa-tdnn/experiments/train/amr_subject_dedup_594_train_100_test_binarized_v20220620_5_adam_epoch1_ecapa_tdnn_mdl.pt', help="specify path to pre-trained model weight checkpoint")
+    parser.add_argument("--trained_mdl_path", default='/Users/m144443/Documents/GitHub/mayo-ecapa-tdnn/experiments/train/amr_subject_dedup_594_train_100_test_binarized_v20220620_5_adam_epoch1_ecapa_tdnn_mdl.pt', help="specify path to a trained model")
     #GCS
     parser.add_argument('-b','--bucket_name', default='ml-e107-phi-shared-aif-us-p', help="google cloud storage bucket name")
     parser.add_argument('-p','--project_name', default='ml-mps-aif-afdgpet01-p-6827', help='google cloud platform project name')
@@ -233,9 +235,9 @@ def main():
     parser.add_argument("--final_dropout", type=float, default=0.25, help="specify dropout probability for final dropout layer in classification head")
     parser.add_argument("--layernorm", type=bool, default=False, help="specify whether to include the LayerNorm in classification head")
     #ecapa-tdnn specific
-    parser.add_argument("--n_mfcc", default=80, type=int)
-    parser.add_argument("--n_fft", default=400, type=int)
-    parser.add_argument("--n_mels", default=128, type=int)
+    parser.add_argument("--n_mfcc", default=80, type=int, help='specify number of MFCCs for spectrogram')
+    parser.add_argument("--n_fft", default=400, type=int, help="specify number of frequency bins in spectrogram")
+    parser.add_argument("--n_mels", default=128, type=int, help="specify number of mels for spectrogram")
     #OTHER
     parser.add_argument("--debug", default=True, type=bool)
     args = parser.parse_args()
@@ -282,23 +284,18 @@ def main():
             assert args.batch_size == 1, 'Not currently compatible with different length wav files unless batch size has been set to 1'
         except:
             args.batch_size = 1
-
-    # (7) check if checkpoint is stored in gcs bucket or confirm it exists on local machine
-    if args.checkpoint is not None:
-        if args.checkpoint[:5] =='gs://':
-            checkpoint = args.checkpoint[5:].replace(args.bucket_name,'')[1:]
-            checkpoint = download_model(checkpoint, bucket)
-            args.checkpoint = checkpoint
-        else:
-            assert os.path.exists(args.checkpoint), 'Current checkpoint does not exist on local machine'
-
-    # (8) dump arguments
+    
+    # (7) dump arguments
     args_path = "%s/args.pkl" % args.exp_dir
     with open(args_path, "wb") as f:
         pickle.dump(args, f)
     #in case of error, everything is immediately uploaded to the bucket
     if args.cloud:
         upload(args.cloud_dir, args_path, bucket)
+
+    # (8) check if trained model is stored in gcs bucket or confirm it exists on local machine
+    if args.trained_mdl_path is not None:
+        args.trained_mdl_path = gcs_model_exists(args.trained_mdl_path, args.bucket_name, args.exp_dir, bucket)
 
     #(9) add bucket to args
     args.bucket = bucket
