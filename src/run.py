@@ -220,7 +220,7 @@ def main():
     parser.add_argument("--resample_rate", default=16000,type=int, help='resample rate for audio files')
     parser.add_argument("--reduce", default=True, type=bool, help="Specify whether to reduce to monochannel")
     parser.add_argument("--clip_length", default=160000, type=int, help="If truncating audio, specify clip length in # of frames. 0 = no truncation")
-    parser.add_argument("--trim", default=True, type=int, help="trim silence")
+    parser.add_argument("--trim", default=False, type=int, help="trim silence")
     #Model parameters
     parser.add_argument("-bs", "--batch_size", type=int, default=8, help="specify batch size")
     parser.add_argument("-nw", "--num_workers", type=int, default=0, help="specify number of parallel jobs to run for data loader")
