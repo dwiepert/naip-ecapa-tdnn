@@ -1,5 +1,5 @@
 # ECAPA-TDNN for Mayo Data
-The command line usable, start-to-finish implementation of Wav2vec 2.0 is available with [run.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/run.py). A notebook tutorial version is also available at [run.ipynb](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/run.ipynb). 
+The command line usable, start-to-finish implementation of ECAPA-TDNN is available with [run.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/run.py). A notebook tutorial version is also available at [run.ipynb](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/run.ipynb). 
 
 This implementation trains an ECAPA-TDNN model and a classification head from scratch and can extract embeddings from the trained model. 
 
