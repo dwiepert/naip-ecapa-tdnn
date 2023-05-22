@@ -74,6 +74,13 @@ The following parameters are accepted (`--` indicates the command line argument 
 * `n_mfcc`: integer for number of MFCCs to extract
 * `n_fft`: integer for number of frequency bins
 * `n_mels`: integer for number of mels
+* `fbank`: boolean to indicate whether to extract MFCC based spectrogram or fbank, if selected, target length is `n_fft` and num mel bins is `n_mels`. For consistency, set `n_fft` to 1024. 
+* `freqm`: frequency mask paramenter for use only with `fbank` version. Set with `--freqm`
+* `timem`: time mask parameter for use only with `fbank` version. Set with `--timem`
+* `noise`: add default noise to spectrogram for use only with `fbank` version. Set with `--noise`
+* `skip_norm`: boolean indicating whether to skip normalization of the spectrogram for use only with `fbank` version. Set with `--skip_norm`
+* `mean`: dataset mean (float) for use only with `fbank` version. Set with `--dataset_mean`
+* `std`: dataset standard deviation (float) for use only with `fbank` version. Set with `--dataset_std`
 
 # Arguments
 There are many possible arguments to set, including all the parameters associated with audio configuration. The main run function describes most of these, and you can alter defaults as required. 
@@ -133,6 +140,10 @@ You can train an ECAPA-TDNN model from scratch for classifying speech features u
 This mode is triggered by setting `-m, --mode` to 'train'. 
 
 The classification head can be altered to use a different amount of dropout and to include/exclude layernorm. See `ClassificationHead` class in [speech_utils.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/utilities/speech_utils.py) for more information. 
+
+Note we include two different spectrogram input options. 
+1. `mfcc`: extracts the mel spectrogram based on MFCCs. Trigger by setting `fbank` to False. This version uses default values of: `n_mfcc = 80`, `n_fft = 400`, `n_mels = 128`.
+2. `fbank`: extracts the fbank from a waveform. Trigger by setting `fbank` to True. This version uses `n_fft` and `n_mels`. We recommend setting `n_fft` to 1024 for consistency with SSAST and timm model extraction. This version also has additional transform parameters for frequency masking, time masking, normalization, and adding noise. Please see more in the Audio Configurations section. 
 
 ### 2. Evaluation only
 If you have a trained model and want to evaluate it on a new data set, you can do so by setting `-m, --mode` to 'eval'. You must then also specify a `--trained_mdl_path` to load in. 

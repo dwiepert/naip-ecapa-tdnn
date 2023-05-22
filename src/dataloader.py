@@ -62,6 +62,24 @@ class ECAPA_TDNNDataset(Dataset):
         self.n_mfcc = self.audio_conf.get('n_mfcc')
         self.n_fft = self.audio_conf.get('n_fft')
         self.n_mels = self.audio_conf.get('n_mels')
+        self.fbank = self.audio_conf.get('fbank')
+        if self.fbank:
+            self.freqm = self.audio_conf.get('freqm') #frequency masking if freqm != 0
+            self.timem = self.audio_conf.get('timem') #time masking if timem != 0
+            self.norm_mean = self.audio_conf.get('mean')
+            self.norm_std = self.audio_conf.get('std')
+            ## skip_norm is a flag that if you want to skip normalization to compute the normalization stats using src/get_norm_stats.py, if Ture, input normalization will be skipped for correctly calculating the stats.
+            # set it as True ONLY when you are getting the normalization stats.
+            self.skip_norm = self.audio_conf.get('skip_norm') if self.audio_conf.get('skip_norm') else False
+            if self.skip_norm:
+                print('now skip normalization (use it ONLY when you are computing the normalization stats).')
+            else:
+                print('use dataset mean {:.3f} and std {:.3f} to normalize the input.'.format(self.norm_mean, self.norm_std))
+            ## if add noise for data augmentation
+            self.noise = self.audio_conf.get('noise')
+            if self.noise == True:
+                print('now use noise augmentation')
+
 
         self.label_dim = len(self.target_labels)
         print('number of classes is {:d}'.format(self.label_dim))
@@ -107,8 +125,27 @@ class ECAPA_TDNNDataset(Dataset):
 
         :outparam transform: spectrogram transforms
         '''
-        mfcc_tfm = MFCC(n_mfcc= self.n_mfcc, n_fft=self.n_fft, n_mels=self.n_mels)
-        transform_list = [mfcc_tfm]
+        if self.fbank:
+            wav2bank = Wav2Fbank(self.n_fft, self.n_mels, None, None, override_wave=False) #override waveform so final sample does not contain the waveform - doing so because the waveforms are not the same shape
+            transform_list = [wav2bank]
+            if self.freqm != 0:
+                freqm = FreqMask(self.freqm)
+                transform_list.append(freqm)
+            if self.timem != 0: 
+                timem = TimeMask(self.timem)
+                transform_list.append(timem)
+            if not self.skip_norm:
+                norm = Normalize(self.norm_mean, self.norm_std)
+                transform_list.append(norm)
+            if self.noise:
+                #TODO:
+                noise = Noise()
+                transform_list.append(noise)
+            #add freq mask and stuff
+        
+        else:
+            mfcc_tfm = MFCC(n_mfcc= self.n_mfcc, n_fft=self.n_fft, n_mels=self.n_mels)
+            transform_list = [mfcc_tfm]
         
         transform = torchvision.transforms.Compose(transform_list)
         return transform
@@ -145,6 +182,17 @@ class ECAPA_TDNNDataset(Dataset):
         
         sample = self.audio_transform(sample) #load and perform standard transformation
         sample = self.spec_transform(sample) #spectrogram transforms
+
+        if 'fbank' in sample:
+            x = sample['fbank']
+            x = x.unsqueeze(0)
+            x = x.transpose(1, 2)
+            sample['spec'] = x
+            del sample['fbank']
+        
+        if 'mfcc' in sample:
+            sample['spec'] = sample['mfcc']
+            del sample['mfcc']
         return sample
     
 

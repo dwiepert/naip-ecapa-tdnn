@@ -781,7 +781,7 @@ class Wav2Fbank(object):
     
 class MFCC(object):
     
-    def __init__(self, n_fft=16000, n_mels=128, n_mfcc=80):
+    def __init__(self, n_fft=1024, n_mels=128, n_mfcc=80):
         
         self.n_mfcc = n_mfcc
         self.n_fft = n_fft
@@ -794,10 +794,10 @@ class MFCC(object):
 
         :param waveform: torch audio
         :type waveform: tensor object
-        :param n_fft: number of (output) frequency bins
+        :param n_fft: number of (output) frequency bins (target length)
         :type n_fft: int
         :param n_mels: number of mels
-        :type n_fft: int
+        :type n_mels: int
         :return: mel spectrogram
         """
         

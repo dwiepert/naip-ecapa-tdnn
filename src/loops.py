@@ -73,7 +73,7 @@ def train(model, dataloader_train, dataloader_val = None,
         #t0 = time.time()
         model.train()
         for batch in tqdm(dataloader_train):
-            x = batch['mfcc']
+            x = torch.squeeze(batch['spec'], dim=1)
             targets = batch['targets']
             x, targets = x.to(device), targets.to(device)
             optimizer.zero_grad()
@@ -137,7 +137,7 @@ def validation(model, criterion, dataloader_val):
     with torch.no_grad():
         model.eval()
         for batch in tqdm(dataloader_val):
-            x = batch['mfcc']
+            x = torch.squeeze(batch['spec'], dim=1)
             targets = batch['targets']
             x, targets = x.to(device), targets.to(device)
             o = model(x)
@@ -166,7 +166,7 @@ def evaluation(model, dataloader_eval, exp_dir, cloud=False, cloud_dir=None, buc
     with torch.no_grad():
         model.eval()
         for batch in tqdm(dataloader_eval):
-            x = batch['mfcc']
+            x = torch.squeeze(batch['spec'], dim=1)
             x = x.to(device)
             targets = batch['targets']
             targets = targets.to(device)
@@ -207,7 +207,7 @@ def embedding_extraction(model, dataloader, embedding_type='ft'):
     with torch.no_grad():
         model.eval()
         for batch in tqdm(dataloader):
-            x = batch['mfcc']
+            x = torch.squeeze(batch['spec'], dim=1)
             x = x.to(device)
             e = model.extract_embedding(x, embedding_type)
             e = e.cpu().numpy()

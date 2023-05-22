@@ -28,7 +28,7 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
     :param layernorm: include layer normalization in classification head
     """
     def __init__(self, n_size=80, label_dim=6, lin_neurons=192,
-                  activation='relu', final_dropout=0.23, layernorm=False):
+                  activation='relu', final_dropout=0.3, layernorm=False):
         super().__init__()
         self.n_size=n_size
         self.label_dim = label_dim
@@ -59,7 +59,6 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
             e = activation['embeddings']
 
         elif embedding_type == 'pt':
-            x = torch.squeeze(x, dim=1)
             x = x.transpose(1, 2)
             e = self.model(x)
             e = torch.squeeze(e, dim=1)
@@ -75,7 +74,6 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
         :param x: input values to the model (batch_size, input_size)
         :return squeezed classifier output (batch_size, num_labels)
         """
-        x = torch.squeeze(x, dim=1)
         x = x.transpose(1, 2)
         x = self.model(x)
         x = torch.squeeze(x, dim=1)
