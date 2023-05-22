@@ -108,7 +108,7 @@ def eval_only(args):
     if '.csv' in args.data_split_root: 
         eval_df = pd.read_csv(args.data_split_root, index_col = 'uid')
 
-        if if 'distortions' in args.target_labels and 'distortions' not in eval_df.columns:
+        if 'distortions' in args.target_labels and 'distortions' not in eval_df.columns:
             eval_df["distortions"]=((eval_df["distorted Cs"]+eval_df["distorted V"])>0).astype(int)
         
         eval_df = eval_df.dropna(subset=args.target_labels)
