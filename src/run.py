@@ -77,7 +77,11 @@ def train_ecapa_tdnn(args):
                   args.exp_dir, args.cloud, args.cloud_dir, args.bucket)
 
     print('Saving final model')
-    mdl_path = os.path.join(args.exp_dir, '{}_{}_{}_epoch{}_ecapa_tdnn_mdl.pt'.format(args.dataset, args.n_class, args.optim, args.epochs))
+    if args.fbank:
+        e_type = 'fbank'
+    else:
+        e_type = 'mfcc'
+    mdl_path = os.path.join(args.exp_dir, '{}_{}_{}_epoch{}_ecapa_tdnn_{}_mdl.pt'.format(args.dataset, args.n_class, args.optim, args.epochs, e_type))
     torch.save(model.state_dict(), mdl_path)
 
     if args.cloud:
