@@ -22,16 +22,26 @@ from sklearn.metrics import roc_auc_score, roc_curve
 from utilities import *
 
 def train(model, dataloader_train, dataloader_val = None, 
-          optim='adamw', learning_rate=0.001, loss_fn='BCE',
-          sched='onecycle', max_lr=0.01,
+          optim='adamw', learning_rate=0.001, weight_decay=0.001,
+          loss_fn='BCE',sched='onecycle', max_lr=0.01,
           epochs=10, exp_dir='', cloud=False, cloud_dir='', bucket=None):
     """
     Training loop 
-    :param args: dict with all the argument values
-    :param model: ECAPA-TDNN model
+    :param model: model
     :param dataloader_train: dataloader object with training data
     :param dataloader_val: dataloader object with validation data
-    :return model: trained ECAPA-TDNN model
+    :param optim: type of optimizer to initialize
+    :param learning_rate: optimizer learning rate
+    :param weight_decay: weight decay value for adamw optimizer
+    :param loss_fn: type of loss function to initialize
+    :param sched: type of scheduler to initialize
+    :param max_lr: max learning rate for onecycle scheduler
+    :param epochs: number of epochs to run pretraining
+    :param exp_dir: output directory on local machine
+    :param cloud: boolean indicating whether uploading to cloud
+    :param cloud_dir: output directory in google cloud storage bucket
+    :param bucket: initialized GCS bucket object
+    :return model: finetuned model
     """
     print('Training start')
     #send to gpu
@@ -48,7 +58,7 @@ def train(model, dataloader_train, dataloader_val = None,
     if optim == 'adam':
         optimizer = torch.optim.Adam([p for p in model.parameters() if p.requires_grad],lr=learning_rate)
     elif optim == 'adamw':
-         optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=learning_rate)
+         optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=learning_rate, weight_decay=weight_decay)
     else:
         raise ValueError('adam must be given for optimizer parameter')
     
