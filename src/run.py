@@ -281,7 +281,7 @@ def main():
     parser.add_argument("--n_fft", default=400, type=int, help="specify number of frequency bins in spectrogram")
     parser.add_argument("--n_mels", default=128, type=int, help="specify number of mels for spectrogram")
     #if using fbank instead of mfcc
-    parser.add_argument("--fbank", default=True, type=bool)
+    parser.add_argument("--fbank", default=False, type=bool)
     parser.add_argument('--freqm', help='frequency mask max length', type=int, default=0)
     parser.add_argument('--timem', help='time mask max length', type=int, default=0)
     parser.add_argument("--noise", type=bool, default=False, help="specify if augment noise in finetuning")
@@ -289,7 +289,7 @@ def main():
     parser.add_argument("--dataset_mean", default=-4.2677393, type=float, help="the dataset mean, used for input normalization")
     parser.add_argument("--dataset_std", default=4.5689974, type=float, help="the dataset std, used for input normalization")
     #OTHER
-    parser.add_argument("--debug", default=True, type=bool)
+    parser.add_argument("--debug", default=False, type=bool)
     args = parser.parse_args()
     
     print('Torch version: ',torch.__version__)
