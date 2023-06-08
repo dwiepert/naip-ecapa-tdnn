@@ -328,7 +328,16 @@ def main():
         args.target_labels = None
         args.n_class = 0
     else:
-        with open(args.label_txt) as f:
+        if args.label_txt[:5] =='gs://':
+            label_txt = args.label_txt[5:].replace(args.bucket_name,'')[1:]
+            bn = os.path.basename(label_txt)
+            blob = bucket.blob(label_txt)
+            blob.download_to_filename(bn)
+            label_txt = bn
+        else:
+            label_txt = args.label_txt
+
+        with open(label_txt) as f:
             target_labels = f.readlines()
         target_labels = [l.strip() for l in target_labels]
         args.target_labels = target_labels
