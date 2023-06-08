@@ -130,10 +130,11 @@ def eval_only(args):
 
    # (2) set up audio configuration for transforms
     audio_conf = {'trained_mdl_path': args.trained_mdl_path, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
-                  'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':args.n_mfcc, 'n_fft': args.n_fft, 'n_mels': args.n_mels, 
-                  'fbank':args.fbank,'freqm': args.freqm, 'timem': args.timem,  'noise':args.noise,
+                  'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':model_args.n_mfcc, 'n_fft': model_args.n_fft, 'n_mels': model_args.n_mels, 
+                  'fbank':model_args.fbank,'freqm': args.freqm, 'timem': args.timem,  'noise':args.noise,
                     'mean':args.dataset_mean, 'std':args.dataset_std, 'skip_norm':args.skip_norm}
-
+    #think that any configuration args that alter the input dims must be the SAME as the model you are loading in.
+    #model
 
     # (3) set up datasets and dataloaders
     dataset_eval = ECAPA_TDNNDataset(eval_df, target_labels=model_args.target_labels, audio_conf=audio_conf,
@@ -192,10 +193,10 @@ def get_embeddings(args):
 
     # (2) set up audio configuration for transforms
     audio_conf = {'trained_mdl_path': args.trained_mdl_path, 'resample_rate':args.resample_rate, 'reduce': args.reduce,
-                  'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':args.n_mfcc, 'n_fft': args.n_fft, 'n_mels': args.n_mels, 
-                  'fbank':args.fbank,'freqm': args.freqm, 'timem': args.timem,  'noise':args.noise,
+                  'trim': args.trim, 'clip_length': args.clip_length, 'n_mfcc':model_args.n_mfcc, 'n_fft': model_args.n_fft, 'n_mels': model_args.n_mels, 
+                  'fbank':model_args.fbank,'freqm': args.freqm, 'timem': args.timem,  'noise':args.noise,
                     'mean':args.dataset_mean, 'std':args.dataset_std, 'skip_norm':args.skip_norm}
-
+    #think that any configuration args that alter the input dims must follow the loaded model (model_args)
     
     # (3) set up dataloaders
     waveform_dataset = ECAPA_TDNNDataset(annotations_df, target_labels=args.target_labels, audio_conf=audio_conf,
@@ -243,10 +244,10 @@ def main():
     #Inputs
     parser.add_argument('-i','--prefix',default='speech_ai/speech_lake/', help='Input directory or location in google cloud storage bucket containing files to load')
     parser.add_argument("-s", "--study", choices = ['r01_prelim','speech_poc_freeze_1', None], default='speech_poc_freeze_1', help="specify study name")
-    parser.add_argument("-d", "--data_split_root", default='gs://ml-e107-phi-shared-aif-us-p/speech_ai/share/data_splits/amr_subject_dedup_594_train_100_test_binarized_v20220620', help="specify file path where datasplit is located. If you give a full file path to classification, an error will be thrown. On the other hand, evaluation and embedding expects a single .csv file.")
+    parser.add_argument("-d", "--data_split_root", default='gs://ml-e107-phi-shared-aif-us-p/speech_ai/share/data_splits/amr_subject_dedup_594_train_100_test_binarized_v20220620/test.csv', help="specify file path where datasplit is located. If you give a full file path to classification, an error will be thrown. On the other hand, evaluation and embedding expects a single .csv file.")
     parser.add_argument('-l','--label_txt', default='src/labels.txt')
     parser.add_argument('--lib', default=False, type=ast.literal_eval, help="Specify whether to load using librosa as compared to torch audio")
-    parser.add_argument("--trained_mdl_path", default=None, help="specify path to a trained model")
+    parser.add_argument("--trained_mdl_path", default='gs://ml-e107-phi-shared-aif-us-p/m144443/vertex/mayo-ecapa-tdnn/train/amr_subject_dedup_594_train_100_test_binarized_v20220620_5_adamw_epoch20_ecapa_tdnn_fbank_mdl.pt', help="specify path to a trained model")
     #GCS
     parser.add_argument('-b','--bucket_name', default='ml-e107-phi-shared-aif-us-p', help="google cloud storage bucket name")
     parser.add_argument('-p','--project_name', default='ml-mps-aif-afdgpet01-p-6827', help='google cloud platform project name')
@@ -256,7 +257,7 @@ def main():
     parser.add_argument("-o", "--exp_dir", default="./experiments", help='specify LOCAL output directory')
     parser.add_argument('--cloud_dir', default='', type=str, help="if saving to the cloud, you can specify a specific place to save to in the CLOUD bucket")
     #Mode specific
-    parser.add_argument("-m", "--mode", choices=['train','eval','extraction'], default='train')
+    parser.add_argument("-m", "--mode", choices=['train','eval','extraction'], default='extraction')
     parser.add_argument('--embedding_type', type=str, default='ft', help='specify whether embeddings should be extracted from classification head (ft) or base pretrained model (pt)', choices=['ft','pt'])
     #Audio transforms
     parser.add_argument("--resample_rate", default=16000,type=int, help='resample rate for audio files')
