@@ -68,7 +68,14 @@ The following parameters are accepted (`--` indicates the command line argument 
 * `resample_rate`: an integer value for resampling. Set with `--resample_rate`
 * `reduce`: a boolean indicating whether to reduce audio to monochannel. Set with `--reduce`
 * `clip_length`: float specifying how many seconds the audio should be. Will work with the 'sample_rate' of the audio to get # of frames. Set with `--clip_length`
-* `trim`: boolean specifying whether to trim beginning and end silence. Set with `--trim`
+* `tshift`: Time shifting parameter (between 0 and 1). Set with `--tshift`
+* `speed`: Speed tuning parameter (between 0 and 1). Set with `--speed`
+* `gauss_noise`: amount of gaussian noise to add (between 0 and 1). Set with `--gauss`
+* `pshift`: pitch shifting parameter (between 0 and 1). Set with `--pshift`
+* `pshiftn`: number of steps for pitch shifting. Set with `--pshiftn`
+* `gain`: gain parameter (between 0 and 1).Set with `--gain`
+* `stretch`: audio stretching parameter (between 0 and 1). Set with `--stretch`
+* `mixup`: parameter for file mixup (between 0 and 1). Set with `--mixup`
 
 *Spectrogram Transform Information*
 * `n_mfcc`: integer for number of MFCCs to extract
@@ -78,7 +85,6 @@ The following parameters are accepted (`--` indicates the command line argument 
 * `freqm`: frequency mask paramenter for use only with `fbank` version. Set with `--freqm`
 * `timem`: time mask parameter for use only with `fbank` version. Set with `--timem`
 * `noise`: add default noise to spectrogram for use only with `fbank` version. Set with `--noise`
-* `skip_norm`: boolean indicating whether to skip normalization of the spectrogram for use only with `fbank` version. Set with `--skip_norm`
 * `mean`: dataset mean (float) for use only with `fbank` version. Set with `--dataset_mean`
 * `std`: dataset standard deviation (float) for use only with `fbank` version. Set with `--dataset_std`
 
@@ -140,6 +146,8 @@ You can train an ECAPA-TDNN model from scratch for classifying speech features u
 This mode is triggered by setting `-m, --mode` to 'train'. 
 
 The classification head can be altered to use a different amount of dropout and to include/exclude layernorm. See `ClassificationHead` class in [speech_utils.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/utilities/speech_utils.py) for more information. 
+
+Additionally, there are data augmentation transforms available for training, such as time shift, speed tuning, adding noise, pitch shift, gain, stretching audio, and audio mixup. 
 
 Note we include two different spectrogram input options. 
 1. `mfcc`: extracts the mel spectrogram based on MFCCs. Trigger by setting `fbank` to False. This version uses default values of: `n_mfcc = 80`, `n_fft = 400`, `n_mels = 128`.

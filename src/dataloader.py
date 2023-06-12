@@ -52,12 +52,20 @@ class ECAPA_TDNNDataset(Dataset):
 
         #AUDIO CONFIGURATION PARAMETERS
         self.audio_conf = audio_conf
-        self.trained_mdl_path= self.audio_conf.get('trained_mdl_path')
         ### AUDIO TRANSFORMATIONS
         self.resample_rate = self.audio_conf.get('resample_rate') #resample if resample rate != 0 and if resample rate != sample rate
         self.reduce = self.audio_conf.get('reduce') #reduce to monochannel if True
-        self.trim = self.audio_conf.get('trim') #trim silence if True
         self.clip_length = self.audio_conf.get('clip_length') #truncate clip to specified length if != 0
+        ### AUDIO TRANSFORM INFO - albumentation audio augmentations
+        self.tshift = self.audio_conf.get('tshift') #0.9
+        self.speed = self.audio_conf.get('speed') #0
+        self.gauss = self.audio_conf.get('gauss_noise') #0.8
+        self.pshift = self.audio_conf.get('pshift') #0
+        self.pshift_n = self.audio_conf.get('pshiftn') #0
+        self.gain = self.audio_conf.get('gain') #0.9
+        self.stretch =  self.audio_conf.get('stretch') #0
+        #mixup
+        self.mixup = self.audio_conf.get('mixup') #mixup if mixup != 0
         ### SPECTROGRAM TRANSFORMATIONS
         self.n_mfcc = self.audio_conf.get('n_mfcc')
         self.n_fft = self.audio_conf.get('n_fft')
@@ -68,23 +76,13 @@ class ECAPA_TDNNDataset(Dataset):
             self.timem = self.audio_conf.get('timem') #time masking if timem != 0
             self.norm_mean = self.audio_conf.get('mean')
             self.norm_std = self.audio_conf.get('std')
-            ## skip_norm is a flag that if you want to skip normalization to compute the normalization stats using src/get_norm_stats.py, if Ture, input normalization will be skipped for correctly calculating the stats.
-            # set it as True ONLY when you are getting the normalization stats.
-            self.skip_norm = self.audio_conf.get('skip_norm') if self.audio_conf.get('skip_norm') else False
-            if self.skip_norm:
-                print('now skip normalization (use it ONLY when you are computing the normalization stats).')
-            else:
-                print('use dataset mean {:.3f} and std {:.3f} to normalize the input.'.format(self.norm_mean, self.norm_std))
             ## if add noise for data augmentation
             self.noise = self.audio_conf.get('noise')
-            if self.noise == True:
-                print('now use noise augmentation')
 
 
         self.label_dim = len(self.target_labels)
-        print('number of classes is {:d}'.format(self.label_dim))
 
-        self.audio_transform = self._getaudiotransform() #get audio transforms
+        self.audio_transform, self.al_transform = self._getaudiotransform() #get audio transforms
         self.spec_transform = self._getspectransform()
 
     def _getaudiotransform(self):
@@ -105,9 +103,6 @@ class ECAPA_TDNNDataset(Dataset):
         if self.resample_rate != 0: #16000
             downsample_tfm = Resample(self.resample_rate)
             transform_list.append(downsample_tfm)
-        if self.trim:
-            trim_tfm = TrimSilence()
-            transform_list.append(trim_tfm)
         if self.clip_length != 0: #160000
             truncate_tfm = Truncate(length = self.clip_length)
             transform_list.append(truncate_tfm)
@@ -115,7 +110,37 @@ class ECAPA_TDNNDataset(Dataset):
         tensor_tfm = ToTensor()
         transform_list.append(tensor_tfm)
         transform = torchvision.transforms.Compose(transform_list)
-        return transform
+
+        #albumentations transforms
+        al_transform = []
+        if self.tshift != 0:
+            tshift = TimeShifting(p=self.tshift)
+            al_transform.append(tshift)
+        
+        if self.speed != 0:
+            speed = SpeedTuning(p=self.speed)
+            al_transform.append(speed)
+        
+        if self.gauss != 0:
+            gauss = AddGaussianNoise(p=self.gauss)
+            al_transform.append(gauss)
+        
+        if self.pshift != 0:
+            pshift = PitchShift(p=self.pshift, n_steps = self.pshiftn)
+            al_transform.append(pshift)
+
+        if self.gain != 0:
+            gain = Gain(p=self.gain)
+            al_transform.append(gain)
+
+        if self.stretch != 0:
+            stretch = StretchAudio(p=self.stretch)
+            al_transform.append(stretch)
+
+        if al_transform != []:
+            al_transform = albumentations.Compose(al_transform)
+
+        return transform, al_transform
     
     def _getspectransform(self):
         '''
@@ -134,11 +159,9 @@ class ECAPA_TDNNDataset(Dataset):
             if self.timem != 0: 
                 timem = TimeMask(self.timem)
                 transform_list.append(timem)
-            if not self.skip_norm:
-                norm = Normalize(self.norm_mean, self.norm_std)
-                transform_list.append(norm)
+            norm = Normalize(self.norm_mean, self.norm_std)
+            transform_list.append(norm)
             if self.noise:
-                #TODO:
                 noise = Noise()
                 transform_list.append(noise)
             #add freq mask and stuff
@@ -181,6 +204,31 @@ class ECAPA_TDNNDataset(Dataset):
         }
         
         sample = self.audio_transform(sample) #load and perform standard transformation
+        if self.al_transform != []:
+            sample = self.al_transform(sample=sample)['sample'] #audio augmentations
+
+        mix = Mixup()
+        if self.mixup == 0:
+            sample= mix(sample, None)
+
+        elif random.random() < self.mixup: 
+            mix_sample_idx = random.randint(0, len(self.annotations_df)-1)
+            mix_uid = self.annotations_df.index[mix_sample_idx]
+            mix_targets = self.annotations_df[self.target_labels].iloc[mix_sample_idx].values
+        
+            sample2 = {
+                'uid': mix_uid,
+                'targets': mix_targets
+            }
+            sample2 = self.audio_transform(sample2) #load and perform standard transformation
+            if self.al_transform != []:
+                sample2 = self.al_transform(sample=sample2)["sample"] #audio augmentations
+
+            sample = mix(sample, sample2)
+        
+        else:
+            sample = mix(sample, None)
+
         sample = self.spec_transform(sample) #spectrogram transforms
 
         if 'fbank' in sample:
