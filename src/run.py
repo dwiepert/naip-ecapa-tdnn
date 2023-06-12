@@ -259,8 +259,8 @@ def main():
     parser.add_argument('--lib', default=False, type=ast.literal_eval, help="Specify whether to load using librosa as compared to torch audio")
     parser.add_argument("--trained_mdl_path", default=None, help="specify path to a trained model")
     #GCS
-    parser.add_argument('-b','--bucket_name', default='', help="google cloud storage bucket name")
-    parser.add_argument('-p','--project_name', default='', help='google cloud platform project name')
+    parser.add_argument('-b','--bucket_name', default=None, help="google cloud storage bucket name")
+    parser.add_argument('-p','--project_name', default=None, help='google cloud platform project name')
     parser.add_argument('--cloud', default=False, type=ast.literal_eval, help="Specify whether to save everything to cloud")
     #output
     parser.add_argument("--dataset", default=None,type=str, help="When saving, the dataset arg is used to set file names. If you do not specify, it will assume the lowest directory from data_split_root")
