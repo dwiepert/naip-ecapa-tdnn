@@ -395,12 +395,17 @@ def main():
             args.batch_size = 1
     
     # (7) dump arguments
-    args_path = "%s/args.pkl" % args.exp_dir
-    with open(args_path, "wb") as f:
-        pickle.dump(args, f)
-    #in case of error, everything is immediately uploaded to the bucket
-    if args.cloud:
-        upload(args.cloud_dir, args_path, bucket)
+    if args.mode=='train':
+        #only save args if training a model. 
+        args_path = "%s/args.pkl" % args.exp_dir
+        assert not os.path.exists(args_path), 'Current experiment directory already has an args.pkl file. Please change experiment directory or rename the args.pkl to avoid overwriting the file.'
+
+        with open(args_path, "wb") as f:
+            pickle.dump(args, f)
+        
+        #in case of error, everything is immediately uploaded to the bucket
+        if args.cloud:
+            upload(args.cloud_dir, args_path, bucket)
 
     # (8) check if trained model is stored in gcs bucket or confirm it exists on local machine 
     if args.mode != 'train' and args.trained_mdl_path is not None:
