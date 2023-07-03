@@ -25,7 +25,10 @@
             "--cloud=True",
             "--cloud_dir=TODO",
             "--mode=train",
+            "--shared_dense=False",
+            "--sd_bottleneck=192",
             "--embedding_type=ft",
+            "--pooling_mode=mean",
             "--resample_rate=16000",
             "--reduce=True",
             "--clip_length=10.0",
@@ -37,6 +40,7 @@
             "--gain=0",
             "--stretch=0",
             "--mixup=0",
+            "--lin_neurons=192",
             "--n_mfcc=80",
             "-n_fft=400",
             "-n_mels=128",
@@ -58,6 +62,7 @@
             "--activation=relu",
             "--final_dropout=0.3",
             "--layernorm=False",
+            "--clf_bottleneck=192",
             "--debug=False"
           ]
         }
