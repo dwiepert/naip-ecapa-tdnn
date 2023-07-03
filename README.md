@@ -96,6 +96,8 @@ There are many possible arguments to set, including all the parameters associate
 * `-l, --label_txt`: sets the `label_txt` path. This is a full file path to a .txt file contain a list of the target labels for selection (see [labels.txt](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/labels.txt). Features in same classifier group should be split by ',', each feature classifier group should be split by '/n'). If stored in a bucket it If it is empty, it will require that embedding extraction be running.
 * `--lib`: : specifies whether to load using librosa (True) or torchaudio (False), default=False
 * `--trained_mdl_path`: if running eval-only or extraction, you must specify a trained model model to load in. This can either be a local path of a 'gs://' path, that latter of which will trigger the code to download the specified model path to the local machine. 
+* `--val_size`: Specify size of validation set to generate
+* `--seed`: Specify a seed for random number generator to make validation set consistent across runs. Accepts None or any valid RandomState input (i.e., int)
 
 ### Google cloud storage
 * `-b, --bucket_name`: sets the `bucket_name` for GCS loading. Required if loading from cloud.
