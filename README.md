@@ -1,9 +1,9 @@
-# ECAPA-TDNN for Mayo Data
-The command line usable, start-to-finish implementation of ECAPA-TDNN is available with [run.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/run.py). A notebook tutorial version is also available at [run.ipynb](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/run.ipynb). 
+# ECAPA-TDNN for NAIP Data
+The command line usable, start-to-finish implementation of ECAPA-TDNN is available with [run.py](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/run.py). A notebook tutorial version is also available at [run.ipynb](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/run.ipynb). 
 
 This implementation trains an ECAPA-TDNN model and a classification head from scratch and can extract embeddings from the trained model. 
 
-This implementation uses wrapper classes over an [ECAPA-TDNN model](https://speechbrain.readthedocs.io/en/latest/API/speechbrain.lobes.models.ECAPA_TDNN.html) available with Speechbrain. The `ECAPA_TDNNForSpeechClassification` is the wrapped model, which includes an added classification head with a Dense layer, ReLU activation, dropout, and a final linear projection layer (this class is defined as `ClassificationHead` in [speech_utils.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/utilities/speech_utils.py)) as well as a function for embedding extraction. See [ecapa_tdnn_models.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/models/ecapa_tdnn_models.py) for information on intialization arguments.
+This implementation uses wrapper classes over an [ECAPA-TDNN model](https://speechbrain.readthedocs.io/en/latest/API/speechbrain.lobes.models.ECAPA_TDNN.html) available with Speechbrain. The `ECAPA_TDNNForSpeechClassification` is the wrapped model, which includes an added classification head with a Dense layer, ReLU activation, dropout, and a final linear projection layer (this class is defined as `ClassificationHead` in [speech_utils.py](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/utilities/speech_utils.py)) as well as a function for embedding extraction. See [ecapa_tdnn_models.py](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/models/ecapa_tdnn_models.py) for information on intialization arguments.
 
 ## Running Environment
 The environment must include the following packages, all of which can be dowloaded with pip or conda:
@@ -26,7 +26,7 @@ To access data stored in GCS on your local machine, you will need to additionall
 Please note that if using GCS, the model expects arguments like model paths or directories to start with `gs://BUCKET_NAME/...` with the exception of defining an output cloud directory which should just be the prefix to save within a bucket. 
 
 ## Model checkpoints
-Unlike some of our other models like [SSAST](https://github.com/dwiepert/mayo-ssast/main) and [W2V2](https://github.com/dwiepert/mayo-w2v2/main), we are training a model from scratch. As such, we only ever load in fully trained models, which is a required step for running only evaluation (`--mode` set to 'eval') or embedding extraction (`--mode` set to extraction). If running in one of those modes, specify a path to a trained model with the `--trained_mdl_path` argument. It expects that this argument will contain a full file path pointing to a single model, and that the directory this model is contained in (i.e., `os.path.dirname(args.trained_mdl_path)` contains an `arg.pkl` file. 
+Unlike some of our other models like [SSAST](https://github.com/dwiepert/naip-ssast/main) and [W2V2](https://github.com/dwiepert/naip-w2v2/main), we are training a model from scratch. As such, we only ever load in fully trained models, which is a required step for running only evaluation (`--mode` set to 'eval') or embedding extraction (`--mode` set to extraction). If running in one of those modes, specify a path to a trained model with the `--trained_mdl_path` argument. It expects that this argument will contain a full file path pointing to a single model, and that the directory this model is contained in (i.e., `os.path.dirname(args.trained_mdl_path)` contains an `arg.pkl` file. 
 
 ## Data structure
 This code will only function with the following data structure.
@@ -54,11 +54,11 @@ DATA SPLIT DIR
     -- test.csv
 
 ## Audio Configuration
-Data is loaded using an `ECAPA_TDNNDataset` class, where you pass a dataframe of the file names (UIDs) along with columns containing label data, a list of the target labels (columns to select from the df), specify audio configuration, method of loading, and initialize transforms on the raw waveform and spectrogram (see [dataloader.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/dataloader.py)). 
+Data is loaded using an `ECAPA_TDNNDataset` class, where you pass a dataframe of the file names (UIDs) along with columns containing label data, a list of the target labels (columns to select from the df), specify audio configuration, method of loading, and initialize transforms on the raw waveform and spectrogram (see [dataloader.py](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/dataloader.py)). 
 
 To specify audio loading method, you can alter the `bucket` variable and `librosa` variable. As a default, `bucket` is set to None, which will force loading from the local machine. If using GCS, pass a fully initialized bucket. Setting the `librosa` value to 'True' will cause the audio to be loaded using librosa rather than torchaudio. 
 
-The audio configuration parameters should be given as a dictionary (which can be seen in [run.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/run.py) and [run.ipynb](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/run.ipynb). Most configuration values are for initializing audio and spectrogram transforms. The transform will only be initialized if the value is not 0. If you have a further desire to add transforms, see [speech_utils.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/utilities/speech_utils.py)) and alter [dataloader.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/dataloader.py) accordingly. 
+The audio configuration parameters should be given as a dictionary (which can be seen in [run.py](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/run.py) and [run.ipynb](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/run.ipynb). Most configuration values are for initializing audio and spectrogram transforms. The transform will only be initialized if the value is not 0. If you have a further desire to add transforms, see [speech_utils.py](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/utilities/speech_utils.py)) and alter [dataloader.py](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/dataloader.py) accordingly. 
 
 The following parameters are accepted (`--` indicates the command line argument to alter to set it):
 
@@ -93,7 +93,7 @@ There are many possible arguments to set, including all the parameters associate
 * `-i, --prefix`: sets the `prefix` or input directory. Compatible with both local and GCS bucket directories containing audio files, though do not include 'gs://'
 * `-s, --study`: optionally set the study. You can either include a full path to the study in the `prefix` arg or specify some parent directory in the `prefix` arg containing more than one study and further specify which study to select here.
 * `-d, --data_split_root`: sets the `data_split_root` directory or a full path to a single csv file. For classification, it must be  a directory containing a train.csv and test.csv of file names. If runnning embedding extraction, it should be a csv file. Running evaluation only can accept either a directory or a csv file. This path should include 'gs://' if it is located in a bucket. 
-* `-l, --label_txt`: sets the `label_txt` path. This is a full file path to a .txt file contain a list of the target labels for selection (see [labels.txt](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/labels.txt). Features in same classifier group should be split by ',', each feature classifier group should be split by '/n'). If stored in a bucket it If it is empty, it will require that embedding extraction be running.
+* `-l, --label_txt`: sets the `label_txt` path. This is a full file path to a .txt file contain a list of the target labels for selection (see [labels.txt](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/labels.txt). Features in same classifier group should be split by ',', each feature classifier group should be split by '/n'). If stored in a bucket it If it is empty, it will require that embedding extraction be running.
 * `--lib`: : specifies whether to load using librosa (True) or torchaudio (False), default=False
 * `--trained_mdl_path`: if running eval-only or extraction, you must specify a trained model model to load in. This can either be a local path of a 'gs://' path, that latter of which will trigger the code to download the specified model path to the local machine. 
 
@@ -143,7 +143,7 @@ For more information on arguments, you can also run `python run.py -h`.
 This implementation contains functionality options as listed below:
 
 ### 1. Training from scratch
-You can train an ECAPA-TDNN model from scratch for classifying speech features using the `ECAPA_TDNNForSpeechClassification` class in [ecapa_tdnn_models.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/models/ecapa_tdnn_models.py) and the `train(...)` function in [loops.py](https://github.com/dwiepert/mayo-ecapa-tdnn/blob/main/src/loops.py).
+You can train an ECAPA-TDNN model from scratch for classifying speech features using the `ECAPA_TDNNForSpeechClassification` class in [ecapa_tdnn_models.py](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/models/ecapa_tdnn_models.py) and the `train(...)` function in [loops.py](https://github.com/dwiepert/naip-ecapa-tdnn/blob/main/src/loops.py).
 
 This mode is triggered by setting `-m, --mode` to 'train'. 
 
