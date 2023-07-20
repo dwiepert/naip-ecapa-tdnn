@@ -8,6 +8,9 @@ Author: Daniela Wiepert, Sampath Gogineni
 Email: wiepert.daniela@mayo.edu
 File: ecapa_tdnn_models.py
 '''
+#IMPORTS
+#built-in
+from collections import OrderedDict
 
 #third-party
 from speechbrain.lobes.models.ECAPA_TDNN import ECAPA_TDNN
@@ -44,9 +47,10 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
          #adding a shared dense layer
         self.shared_dense = shared_dense
         if self.shared_dense:
-            self.dense = nn.Linear(self.lin_neurons, self.sd_bottleneck)
+            self.dense = nn.Sequential(OrderedDict([('dense',nn.Linear(self.lin_neurons, self.sd_bottleneck)), ('relu',nn.ReLU())]))
             self.clf_input = self.sd_bottleneck
         else:
+            self.dense = nn.Identity()
             self.clf_input = self.lin_neurons
 
         #check if a list or a single number
@@ -83,8 +87,7 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
             x = self.model(x)
             x = torch.squeeze(x, dim=1)
 
-            if self.shared_dense:
-                x = self.dense(x)
+            x = self.dense(x)
             
             embeddings = []
             for clf in self.classifiers:
@@ -122,8 +125,7 @@ class ECAPA_TDNNForSpeechClassification(nn.Module):
         x = self.model(x)
         x = torch.squeeze(x, dim=1)
 
-        if self.shared_dense:
-            x = self.dense(x)
+        x = self.dense(x)
 
         preds = []
         for clf in self.classifiers:
